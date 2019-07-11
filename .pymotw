@@ -1,0 +1,11 @@
+[account1]
+hostname=imap.sina.com.cn
+port=993
+username=
+password=
+
+[account2]
+hostname=imap.sina.com.cn
+port=993
+username=
+password=
