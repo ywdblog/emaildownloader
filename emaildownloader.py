@@ -7,7 +7,6 @@ import imap_utf7
 import os
 import multiprocessing
 
-
 list_response_pattern = re.compile(
     r'\((?P<flags>.*?)\) "(?P<delimiter>.*)" (?P<name>.*)'
 )
@@ -36,46 +35,44 @@ def fetch_process(*p):
         return (False, i)
     return (True, i)
 
-options = imaplib_connect.readconf()
-for account in options['account']:
-    with imaplib_connect.open_connection(False, **account) as c:
-        path = options['path']
-        usernamepath = os.path.join(path, account["username"])
-        if os.path.isdir(usernamepath) == False:
-            os.mkdir(usernamepath)
+if __name__ == '__main__':
+    
+    options = imaplib_connect.readconf()
+    for account in options['account']:
+        with imaplib_connect.open_connection(False, **account) as c:
+            path = options['path']
+            usernamepath = os.path.join(path, account["username"])
+            if os.path.isdir(usernamepath) == False:
+                os.mkdir(usernamepath)
 
-        typ, data = c.list()
-        for line in data:
-            flags, delimiter, mailbox_name = parse_list_response(line)
+            typ, data = c.list()
+            for line in data:
+                flags, delimiter, mailbox_name = parse_list_response(line)
 
-            # 输入参数是bytes类型，返回str类型
-            mailbox_name_utf8 = imap_utf7.decode(mailbox_name.encode("UTF-7"))
+                # 输入参数是bytes类型，返回str类型
+                mailbox_name_utf8 = imap_utf7.decode(mailbox_name.encode("UTF-7"))
+                mailboxfolder = os.path.join(usernamepath, mailbox_name_utf8)
+                if os.path.isdir(mailboxfolder) == False:
+                    os.mkdir(mailboxfolder)
+                typ2, data2 = c.select(mailbox_name, readonly=False)
+                print(mailbox_name)
+                num_msgs = int(data2[0])
+                if (num_msgs <= 0):
+                    continue
 
-            mailboxfolder = os.path.join(usernamepath, mailbox_name_utf8)
-            #print(type(mailboxfolder))
-            if os.path.isdir(mailboxfolder) == False:
-                os.mkdir(mailboxfolder)
-            #status = c.status('"{}"'.format(mailbox_name),'(MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN)')
-            status = c.status('"{}"'.format(mailbox_name), '(MESSAGES)')
-            status = status[1][0]
-            #选择夹子
-            typ2, data2 = c.select(mailbox_name, readonly=False)
-            print(mailbox_name)
-            num_msgs = int(data2[0])
-            if (num_msgs <= 0):
-                continue
+                pool_size = multiprocessing.cpu_count() * 2
+                pool = multiprocessing.Pool(
+                    processes=pool_size,
+                    maxtasksperchild=20
+                )
+                for i in range(num_msgs):
+                    ob = pool.apply_async(fetch_process, args=(
+                        i, account, mailbox_name, mailboxfolder))
+                    try:
+                        ob.get(timeout=10)
+                    except multiprocessing.TimeoutError:
+                        ob.terminate()
+                        print("error", i)
 
-            pool_size = multiprocessing.cpu_count() * 2
-            pool = multiprocessing.Pool(
-                processes=pool_size,
-            )
-            for i in range(num_msgs):
-                ob = pool.apply_async(fetch_process, args=(
-                    i, account, mailbox_name, mailboxfolder))
-                try:
-                    ob.get(timeout=10)
-                except multiprocessing.TimeoutError:
-                    print("error", i)
-
-            pool.close()
-            pool.join()
+                pool.close()
+                pool.join()
