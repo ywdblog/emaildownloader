@@ -23,9 +23,15 @@ password=
 
 ### 运行程序
 
-- python3 emaildownloader.py #多进程版本
+- python3 e_multiprocessing.py #多进程版本
+- python3 e_threading.py #多线程版本
 
 ### 说明
 
 - 只在python3，linux环境下测试过
 - 仅测试过sina免费邮箱账户
+
+### 相关文章
+
+- [一个email下载器：多进程思路](https://mp.weixin.qq.com/s/i5qJ7REqdelR2y2NFF8mlg)
+- [一个email下载器：多进程编程中遇到的问题](https://mp.weixin.qq.com/s/oqDL76g1su9ZP-BaTbNU_A)
