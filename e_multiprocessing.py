@@ -5,6 +5,7 @@ import imaplib_connect
 import re
 import imap_utf7
 import os
+import sys
 import multiprocessing
 
 list_response_pattern = re.compile(
@@ -50,12 +51,21 @@ if __name__ == '__main__':
                 flags, delimiter, mailbox_name = parse_list_response(line)
 
                 # 输入参数是bytes类型，返回str类型
-                mailbox_name_utf8 = imap_utf7.decode(mailbox_name.encode("UTF-7"))
+                try :
+                    mailbox_name_utf8 = imap_utf7.decode(mailbox_name.encode("UTF-7"))
+                except Exception as err:
+                    #暂时忽略该错误
+                    print (err,mailbox_name)
+                    mailbox_name_utf8="INBOX"
+
                 mailboxfolder = os.path.join(usernamepath, mailbox_name_utf8)
                 if os.path.isdir(mailboxfolder) == False:
                     os.mkdir(mailboxfolder)
+                
+
                 typ2, data2 = c.select(mailbox_name, readonly=False)
                 print(mailbox_name)
+                
                 num_msgs = int(data2[0])
                 if (num_msgs <= 0):
                     continue
@@ -76,3 +86,4 @@ if __name__ == '__main__':
 
                 pool.close()
                 pool.join()
+               

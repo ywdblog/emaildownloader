@@ -7,6 +7,8 @@ import re
 import os
 import sys
 import concurrent.futures
+import socket
+socket.setdefaulttimeout(10)
 
 list_response_pattern = re.compile(
     r'\((?P<flags>.*?)\) "(?P<delimiter>.*)" (?P<name>.*)'
@@ -20,17 +22,24 @@ def parse_list_response(line):
     return (flags, delimiter, mailbox_name)
 
 
-def fetch_thread(i, mailboxfolder):
+def fetch_thread(i, mailboxfolder, mailbox_name, account):
+    global c
     try:
         typ, msg_data = c.fetch(str(i+1), '(RFC822)')
-        print(type(msg_data))
         file = os.path.join(mailboxfolder, str(i) + ".eml")
         with open(file, 'wb') as f:
             f.write(msg_data[0][1])
     except Exception as err:
-        print(err)
+        c = imaplib_connect.open_connection(False, **account)
+        c.select(mailbox_name, readonly=False)
+
+        print(err, "curl")
         return (False, i)
     return (True, i)
+
+
+def done(fn):
+    print(fn.cancelled(), fn.done())
 
 
 options = imaplib_connect.readconf()
@@ -46,32 +55,47 @@ for account in options['account']:
             flags, delimiter, mailbox_name = parse_list_response(line)
 
             # 输入参数是bytes类型，返回str类型
-            mailbox_name_utf8 = imap_utf7.decode(mailbox_name.encode("UTF-7"))
+            try:
+                mailbox_name_utf8 = imap_utf7.decode(
+                    mailbox_name.encode("UTF-7"))
+            except Exception as err:
+                #mailbox_name_utf8 = "INBOX"
+                continue 
 
             mailboxfolder = os.path.join(usernamepath, mailbox_name_utf8)
-            print(type(mailboxfolder))
             if os.path.isdir(mailboxfolder) == False:
                 os.mkdir(mailboxfolder)
 
-            #选择夹子
-            typ2, data2 = c.select(mailbox_name, readonly=False)
+            try:
+                #连接可能会断开，所以选择重新连接
+                typ2, data2 = c.select(mailbox_name, readonly=False)
+            except Exception as err:
+                c = imaplib_connect.open_connection(False, **account)
+                typ2, data2 = c.select(mailbox_name, readonly=False)
+                print("连接已断开，选择重新连接")
 
             num_msgs = int(data2[0])
+            print(mailbox_name_utf8, num_msgs)
             if (num_msgs <= 0):
                 continue
-            ex = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+            ex = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+            #ex.submit返回Future对象
             wait_for = [
-			    ex.submit(fetch_thread, i, mailboxfolder)
-			    for i in range(num_msgs)
-			]
+                ex.submit(fetch_thread, i, mailboxfolder,
+                          mailbox_name, account)
+                for i in range(num_msgs)
+            ]
+
+            for i in range(num_msgs):
+                wait_for[i].arg = i
+                wait_for[i].add_done_callback(done)
 
             try:
-                for f in concurrent.futures.as_completed(wait_for,timeout=10):
-                    print ('main: result: {}'.format(f.result()))
+                for f in concurrent.futures.as_completed(wait_for):
+                    print('main: result: {}'.format(f.result(timeout=10)))
             except concurrent.futures.TimeoutError as err:
-                print (err)
-                
+                print(err, "TimeoutError")
+            except Exception as err:
+                pass
 
-
-
- 
+            #ex.shutdown()
